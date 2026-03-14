@@ -1,0 +1,7 @@
+# Ignore sensitive and generated files
+.env
+scripts/.token_cache.json
+scripts/debug_*.html
+scripts/debug_*.md
+__pycache__/
+*.pyc
