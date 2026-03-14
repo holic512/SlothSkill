@@ -20,12 +20,6 @@ DEFAULT_SERIES = "未分栏"
 DEFAULT_TONE = "有温度的观察型"
 DEFAULT_CONTENT_ROOT = Path.cwd() / "wechat-content-archive"
 DEFAULT_IMAGE_TEST_OUTPUT_DIR = Path.cwd() / "wechat-content-workshop-image-test"
-WECHAT_PUBLISHER_SCRIPT = (
-    Path(__file__).resolve().parents[3]
-    / "wechat_artical_publisher_skill-main"
-    / "scripts"
-    / "wechat_direct_api.py"
-)
 
 OPENING_SCENES = [
     "昨晚九点多，{region}的风还有点硬，我在路边摊前站了五分钟，才意识到这件事其实早就变了。",
@@ -215,6 +209,9 @@ def build_package(args: argparse.Namespace) -> ContentPackage:
         title=title,
         summary=summary,
         body_markdown=body,
+        author="",
+        need_open_comment=1,
+        only_fans_can_comment=0,
         cover_copy=generate_cover_copy(args.topic),
         image_plan=image_plan,
         share_text=generate_share_texts(title, summary),
@@ -313,8 +310,8 @@ def archive_package(package: ContentPackage, args: argparse.Namespace, materiali
         final_dir / "publish_notes.md",
         (
             "主渠道：公众号\n\n"
-            f"建议先检查封面与摘要，再使用现有发布器发布：\n"
-            f"`python3 {WECHAT_PUBLISHER_SCRIPT} publish --mode draft --markdown \"{final_dir / 'wechat_article.md'}\"`\n"
+            "建议先检查封面与摘要，再调用发布器：\n"
+            f"`python3 wechat_artical_publisher_skill-main/scripts/wechat_direct_api.py publish --mode draft --package-dir \"{package_dir}\"`\n"
         ),
     )
 
@@ -341,6 +338,9 @@ def run_image_test(topic: str, region: str, series: str, output_dir: Path, image
         title=topic,
         summary="",
         body_markdown="",
+        author="",
+        need_open_comment=1,
+        only_fans_can_comment=0,
         cover_copy=generate_cover_copy(topic),
         image_plan=[asdict(asset) for asset in build_image_test_assets(topic, region, series, image_count)],
         share_text={},

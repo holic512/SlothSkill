@@ -28,6 +28,9 @@ class ContentPackage:
     title: str
     summary: str
     body_markdown: str
+    author: str
+    need_open_comment: int
+    only_fans_can_comment: int
     cover_copy: str
     image_plan: list[dict]
     share_text: dict
@@ -59,4 +62,3 @@ class QuotaDecision:
     allow_remote_generation: bool
     reason: str
     summary_lines: list[str]
-

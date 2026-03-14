@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -31,7 +33,6 @@ from workshop.package_builder import (
     DEFAULT_IMAGE_TEST_OUTPUT_DIR,
     DEFAULT_SERIES,
     DEFAULT_TONE,
-    WECHAT_PUBLISHER_SCRIPT,
     archive_package,
     build_image_prompts,
     build_package,
@@ -77,6 +78,10 @@ def cmd_generate(args: argparse.Namespace) -> int:
     )
     print(f"内容包已生成: {package_dir}")
     print(f"公众号成稿: {package_dir / 'final' / 'wechat_article.md'}")
+    print(
+        "下一步发布命令: "
+        f"python3 wechat_artical_publisher_skill-main/scripts/wechat_direct_api.py publish --mode draft --package-dir \"{package_dir}\""
+    )
     return 0
 
 
@@ -132,21 +137,12 @@ def cmd_publish_draft(args: argparse.Namespace) -> int:
     if not markdown_path.exists():
         print(f"Error: 未找到公众号成稿 - {markdown_path}", file=sys.stderr)
         return 1
-    if not WECHAT_PUBLISHER_SCRIPT.exists():
-        print(f"Error: 未找到微信发布脚本 - {WECHAT_PUBLISHER_SCRIPT}", file=sys.stderr)
-        return 1
-
-    command = [
-        sys.executable,
-        str(WECHAT_PUBLISHER_SCRIPT),
-        "publish",
-        "--mode",
-        "draft",
-        "--markdown",
-        str(markdown_path),
-    ]
-    completed = subprocess.run(command, check=False)
-    return completed.returncode
+    print("publish-draft 已降级为兼容提示命令；内容工坊不再直接调用发布器。")
+    print(
+        "请执行: "
+        f"python3 wechat_artical_publisher_skill-main/scripts/wechat_direct_api.py publish --mode draft --package-dir \"{package_dir}\""
+    )
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:

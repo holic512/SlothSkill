@@ -32,6 +32,9 @@ class ImageGenerationFlowTests(unittest.TestCase):
             title="标题",
             summary="摘要",
             body_markdown="正文",
+            author="",
+            need_open_comment=1,
+            only_fans_can_comment=0,
             cover_copy="封面",
             image_plan=[
                 {
@@ -84,6 +87,9 @@ class ImageGenerationFlowTests(unittest.TestCase):
             title="标题",
             summary="摘要",
             body_markdown="正文",
+            author="",
+            need_open_comment=1,
+            only_fans_can_comment=0,
             cover_copy="封面",
             image_plan=[
                 {
@@ -122,6 +128,9 @@ class ImageGenerationFlowTests(unittest.TestCase):
             title="标题",
             summary="摘要",
             body_markdown="正文",
+            author="",
+            need_open_comment=1,
+            only_fans_can_comment=0,
             cover_copy="封面",
             image_plan=[
                 {
@@ -170,6 +179,9 @@ class ImageGenerationFlowTests(unittest.TestCase):
             title="标题",
             summary="摘要",
             body_markdown="正文",
+            author="",
+            need_open_comment=1,
+            only_fans_can_comment=0,
             cover_copy="封面",
             image_plan=[
                 {
