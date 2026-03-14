@@ -9,9 +9,10 @@ from .common import ensure_dir
 from .fallback_renderers import render_text_card_png, write_simple_png
 from .models import ContentPackage, ImageAsset, QuotaDecision
 from .pollinations import (
-    DEFAULT_PROXY_URL,
+    auth_headers,
     classify_pollinations_error,
     download_file,
+    get_proxy_candidates,
     get_pollinations_config,
     with_pollinations_key,
 )
@@ -31,7 +32,7 @@ def source_pollinations(asset: ImageAsset, target: Path, proxy_url: Optional[str
         with_pollinations_key(url, config.api_key),
         target,
         proxy_url=proxy_url,
-        headers={"User-Agent": "Mozilla/5.0"},
+        headers=auth_headers(config.api_key),
     )
     return True, f"pollinations[{config.image_model}]"
 
@@ -114,7 +115,7 @@ def materialize_images(
             )
             continue
 
-        proxy_candidates = [None, DEFAULT_PROXY_URL, None]
+        proxy_candidates = get_proxy_candidates()
         success, source_name, failure_reason = attempt_remote_sources(
             active_sources,
             asset,

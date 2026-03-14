@@ -131,11 +131,34 @@ python3 wechat-content-workshop/scripts/content_workshop.py publish-draft \
 
 - 第一步：先查询 Pollinations Key 状态和余额
 - 第二步：根据额度决策是否允许远程 AI 生图
-- 第三步：若缺少 Key、鉴权失败、额度不足，则直接生成本地文字保底图
-- 第四步：若额度查询失败，则仍尝试远程 AI 生图；单张失败后再自动降级到本地文字保底图
-- 请求仍按“直连 -> `127.0.0.1:7890` 代理 -> 再次直连”顺序重试
+- 第三步：若缺少 Key 或鉴权失败，则直接生成本地文字保底图
+- 第四步：若余额不足或额度查询失败，则仍尝试远程 AI 生图；单张失败后再自动降级到本地文字保底图
+- 默认仅直连请求
+- 若 `.env` 中启用 `POLLINATIONS_PROXY_ENABLED=true`，则按“直连 -> `POLLINATIONS_PROXY_URL` 代理 -> 再次直连”顺序重试
 - 每次执行 `generate` / `test-image` 时，都会先输出账户额度摘要和本次图片策略决策
 - 归档时持续记录每张图的 `source`、`generation_strategy`、`decision_reason` 和 `failure_reason`
+
+## 网络请求层
+
+- 当前实现优先使用系统 `curl`
+- 原因：在 macOS / Linux 上通常比 Python `urllib` 更贴近用户终端的真实 DNS、证书链、代理和网络栈表现
+- 余额接口使用 `Authorization: Bearer YOUR_API_KEY`
+- 生图接口同时携带 `Authorization: Bearer YOUR_API_KEY` 和 `?key=YOUR_API_KEY`，以兼容 Pollinations 图像接口
+- 如果只是做库内 HTTP 抽象，`httpx` 的跨平台可维护性更好；但当前这个技能更强调“和用户本机终端行为一致”，所以默认选 `curl`
+
+## Codex 联调说明
+
+- 在 Codex 沙箱内，外网 DNS 或出网能力可能受限
+- 如果生图或余额查询报错类似 `curl: (6) Could not resolve host: gen.pollinations.ai`，不要立刻判定接口不可用
+- 先用真实机器网络重试，也就是提权运行命令，让命令越过沙箱限制
+- 推荐提权命令：
+
+```bash
+python3 wechat-content-workshop/scripts/content_workshop.py test-image --topic "测试图片主题"
+```
+
+- 若只是做本地保底图或离线内容生成，不需要提权
+- 若要验证真实 Pollinations 联网结果，应该优先申请提权执行 `generate` 或 `test-image`
 
 ## `.env` 配置
 
@@ -147,6 +170,8 @@ POLLINATIONS_API_KEY=sk_your_pollinations_key
 # POLLINATIONS_API_BASE=https://gen.pollinations.ai
 # POLLINATIONS_ACCOUNT_API_BASE=https://gen.pollinations.ai
 # POLLINATIONS_IMAGE_MODEL=zimage
+# POLLINATIONS_PROXY_ENABLED=false
+# POLLINATIONS_PROXY_URL=http://127.0.0.1:7890
 ```
 
 说明：
@@ -155,6 +180,8 @@ POLLINATIONS_API_KEY=sk_your_pollinations_key
 - `POLLINATIONS_API_BASE`：可选，默认 `https://gen.pollinations.ai`
 - `POLLINATIONS_ACCOUNT_API_BASE`：可选，默认同上
 - `POLLINATIONS_IMAGE_MODEL`：可选，默认 `zimage`
+- `POLLINATIONS_PROXY_ENABLED`：可选，默认 `false`
+- `POLLINATIONS_PROXY_URL`：可选，默认 `http://127.0.0.1:7890`
 
 ## 依赖说明
 

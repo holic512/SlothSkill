@@ -77,7 +77,7 @@ class ImageGenerationFlowTests(unittest.TestCase):
         self.assertEqual(assets[0]["decision_reason"], "missing_key")
         self.assertIn("missing_key", assets[0]["failure_reason"])
 
-    def test_quota_insufficient_falls_back_directly(self):
+    def test_quota_insufficient_still_attempts_remote_then_falls_back(self):
         package = MODULE.ContentPackage(
             topic="测试主题",
             date="2026-03-14",
@@ -106,17 +106,30 @@ class ImageGenerationFlowTests(unittest.TestCase):
         )
         decision = MODULE.QuotaDecision(
             status="quota_insufficient",
-            allow_remote_generation=False,
+            allow_remote_generation=True,
             reason="quota_insufficient",
             summary_lines=[],
         )
 
         with tempfile.TemporaryDirectory() as tmp_dir:
-            assets = MODULE.materialize_images(package, Path(tmp_dir), False, decision, sources=[])
+            attempts = {"count": 0}
 
-        self.assertEqual(assets[0]["generation_strategy"], "local-fallback-direct")
+            def remote_source(asset, target, proxy_url=None):
+                attempts["count"] += 1
+                raise RuntimeError("balance depleted")
+
+            assets = MODULE.materialize_images(
+                package,
+                Path(tmp_dir),
+                False,
+                decision,
+                sources=[remote_source],
+            )
+
+        self.assertGreaterEqual(attempts["count"], 1)
+        self.assertEqual(assets[0]["generation_strategy"], "remote-then-local-fallback")
         self.assertEqual(assets[0]["decision_reason"], "quota_insufficient")
-        self.assertIn("quota_unavailable", assets[0]["failure_reason"])
+        self.assertIn("generation_failed", assets[0]["failure_reason"])
 
     def test_allowed_uses_remote_generation(self):
         package = MODULE.ContentPackage(

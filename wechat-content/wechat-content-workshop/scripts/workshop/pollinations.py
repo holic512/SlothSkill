@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import os
+import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -19,6 +22,13 @@ DEFAULT_POLLINATIONS_ACCOUNT_API_BASE = "https://gen.pollinations.ai"
 DEFAULT_POLLINATIONS_IMAGE_MODEL = "zimage"
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def get_pollinations_config() -> PollinationsConfig:
     return PollinationsConfig(
         api_key=os.environ.get("POLLINATIONS_API_KEY", "").strip(),
@@ -29,7 +39,17 @@ def get_pollinations_config() -> PollinationsConfig:
         ).rstrip("/"),
         image_model=os.environ.get("POLLINATIONS_IMAGE_MODEL", DEFAULT_POLLINATIONS_IMAGE_MODEL).strip()
         or DEFAULT_POLLINATIONS_IMAGE_MODEL,
+        proxy_enabled=_env_flag("POLLINATIONS_PROXY_ENABLED", default=False),
+        proxy_url=os.environ.get("POLLINATIONS_PROXY_URL", DEFAULT_PROXY_URL).strip() or DEFAULT_PROXY_URL,
     )
+
+
+def get_proxy_candidates(config: Optional[PollinationsConfig] = None) -> list[Optional[str]]:
+    active_config = config or get_pollinations_config()
+    candidates: list[Optional[str]] = [None]
+    if active_config.proxy_enabled and active_config.proxy_url:
+        candidates.extend([active_config.proxy_url, None])
+    return candidates
 
 
 def with_pollinations_key(url: str, api_key: str) -> str:
@@ -67,6 +87,48 @@ def read_json_error(exc: urllib.error.HTTPError) -> Optional[dict]:
         return None
 
 
+def _curl_request(
+    url: str,
+    proxy_url: Optional[str] = None,
+    headers: Optional[dict[str, str]] = None,
+) -> bytes:
+    with tempfile.NamedTemporaryFile(delete=False) as body_file:
+        body_path = Path(body_file.name)
+
+    command = [
+        "curl",
+        "--silent",
+        "--show-error",
+        "--location",
+        "--max-time",
+        str(REMOTE_TIMEOUT),
+        "--output",
+        str(body_path),
+        "--write-out",
+        "%{http_code}",
+    ]
+    if proxy_url:
+        command.extend(["--proxy", proxy_url])
+    for key, value in (headers or {}).items():
+        command.extend(["-H", f"{key}: {value}"])
+    command.append(url)
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        status_code = int((result.stdout or "0").strip() or "0")
+        body = body_path.read_bytes()
+    finally:
+        body_path.unlink(missing_ok=True)
+
+    if result.returncode == 0 and 200 <= status_code < 300:
+        return body
+
+    message = (result.stderr or "").strip() or f"HTTP {status_code or 'request_failed'}"
+    if status_code >= 400:
+        raise urllib.error.HTTPError(url, status_code, message, hdrs=None, fp=io.BytesIO(body))
+    raise urllib.error.URLError(message)
+
+
 def classify_pollinations_error(exc: Exception) -> str:
     message = str(exc)
     for prefix in ["missing_key:", "auth_failed:", "quota_unavailable:", "generation_failed:"]:
@@ -98,14 +160,11 @@ def download_file(
     proxy_url: Optional[str] = None,
     headers: Optional[dict[str, str]] = None,
 ) -> None:
-    request = urllib.request.Request(
+    data = _curl_request(
         url,
+        proxy_url=proxy_url,
         headers=headers or {"User-Agent": "Mozilla/5.0"},
-        method="GET",
     )
-    opener = build_opener(proxy_url)
-    with opener.open(request, timeout=REMOTE_TIMEOUT) as response:
-        data = response.read()
     target.write_bytes(data)
 
 
@@ -114,14 +173,12 @@ def fetch_json(
     proxy_url: Optional[str] = None,
     headers: Optional[dict[str, str]] = None,
 ) -> dict:
-    request = urllib.request.Request(
+    payload = _curl_request(
         url,
+        proxy_url=proxy_url,
         headers=headers or {"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
-        method="GET",
     )
-    opener = build_opener(proxy_url)
-    with opener.open(request, timeout=REMOTE_TIMEOUT) as response:
-        return json.loads(response.read().decode("utf-8"))
+    return json.loads(payload.decode("utf-8"))
 
 
 def fetch_pollinations_quota(proxy_candidates: Optional[list[Optional[str]]] = None) -> PollinationsQuotaStatus:
@@ -135,27 +192,15 @@ def fetch_pollinations_quota(proxy_candidates: Optional[list[Optional[str]]] = N
             errors=["missing_key:POLLINATIONS_API_KEY"],
         )
 
-    proxies = proxy_candidates or [None, DEFAULT_PROXY_URL, None]
+    proxies = proxy_candidates or get_proxy_candidates(config)
     headers = auth_headers(config.api_key, accept="application/json")
     errors: list[str] = []
-    key_data = None
     balance_data = None
 
     for proxy_url in proxies:
         try:
-            key_data = fetch_json(
-                with_pollinations_key(f"{config.account_api_base}/account/key", config.api_key),
-                proxy_url=proxy_url,
-                headers=headers,
-            )
-            break
-        except Exception as exc:
-            errors.append(classify_pollinations_error(exc))
-
-    for proxy_url in proxies:
-        try:
             balance_data = fetch_json(
-                with_pollinations_key(f"{config.account_api_base}/account/balance", config.api_key),
+                f"{config.account_api_base}/account/balance",
                 proxy_url=proxy_url,
                 headers=headers,
             )
@@ -163,35 +208,17 @@ def fetch_pollinations_quota(proxy_candidates: Optional[list[Optional[str]]] = N
         except Exception as exc:
             errors.append(classify_pollinations_error(exc))
 
-    lines = ["Pollinations 额度状态:"]
-    if key_data:
-        if "valid" in key_data:
-            lines.append(f"- Key 状态: {'可用' if key_data.get('valid') else '不可用'}")
-        if key_data.get("type"):
-            lines.append(f"- Key 类型: {key_data['type']}")
-        if key_data.get("permissions"):
-            permissions = ", ".join(str(item) for item in key_data["permissions"])
-            lines.append(f"- 权限: {permissions}")
-        remaining_budget = key_data.get("remainingBudget")
-        if remaining_budget is None:
-            remaining_budget = key_data.get("remaining_budget")
-        if remaining_budget is not None:
-            lines.append(f"- Key 剩余额度: {remaining_budget}")
-        expires_at = key_data.get("expiresAt") or key_data.get("expires_at")
-        if expires_at:
-            lines.append(f"- Key 到期: {expires_at}")
-
+    lines = ["Pollinations 余额状态:"]
     if balance_data:
         balance = balance_data.get("balance")
         if balance is not None:
-            lines.append(f"- 账户余额: {balance}")
+            lines.append(f"- 当前余额: {balance}")
 
-    if key_data or balance_data:
+    if balance_data:
         lines.append(f"- 查询时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         return PollinationsQuotaStatus(
             ok=True,
             lines=lines,
-            key_data=key_data,
             balance_data=balance_data,
             errors=errors,
         )
@@ -263,9 +290,9 @@ def decide_quota_strategy(quota_status: PollinationsQuotaStatus) -> QuotaDecisio
     if (remaining_budget is not None and remaining_budget <= 0) or (balance is not None and balance <= 0):
         return QuotaDecision(
             status="quota_insufficient",
-            allow_remote_generation=False,
+            allow_remote_generation=True,
             reason="quota_insufficient",
-            summary_lines=["图片策略决策: 检测到额度不足，直接切换到本地文字保底图。"],
+            summary_lines=["图片策略决策: 检测到余额不足，仍会尝试 AI 生图，单张失败时自动降级到本地文字保底图。"],
         )
 
     return QuotaDecision(

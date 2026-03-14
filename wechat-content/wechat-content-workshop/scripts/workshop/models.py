@@ -45,6 +45,8 @@ class PollinationsConfig:
     api_base: str
     account_api_base: str
     image_model: str
+    proxy_enabled: bool
+    proxy_url: str
 
 
 @dataclass

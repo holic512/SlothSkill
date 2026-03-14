@@ -214,6 +214,31 @@ python3 wechat_artical_publisher_skill-main/scripts/wechat_direct_api.py publish
 python3 wechat_artical_publisher_skill-main/scripts/wechat_direct_api.py publish --mode draft --markdown "/path/to/article.md"
 ```
 
+## 网络层与联调建议
+
+### 请求层选型
+
+- 这个技能当前应优先使用系统 `curl`
+- 原因是它在 macOS / Linux 上对 DNS、TLS 证书、系统代理和用户终端环境的兼容性更高
+- 如果只是写纯 Python SDK，`httpx` 的工程可维护性更好；但对于“要和用户自己终端里 `curl` 行为一致”的生图联调，`curl` 更稳妥
+
+### Codex 沙箱说明
+
+- 在 Codex 沙箱内，`gen.pollinations.ai` 这类外网请求可能因为 DNS 或出网限制失败
+- 所以“沙箱里请求失败”不等于“接口不可用”
+- 若要验证真实余额查询或 AI 生图，应该提权运行命令，使用宿主机网络
+
+推荐用于真实联调的命令：
+
+```bash
+python3 wechat-content-workshop/scripts/content_workshop.py test-image --topic "测试图片主题"
+```
+
+判断规则：
+
+- 只生成本地保底图或离线文章时，不需要提权
+- 需要验证 Pollinations 余额、生图、远程接口可用性时，需要提权
+
 ## 目录关系检查
 
 如果你安装后发现导入失败，先检查是不是这个问题：
