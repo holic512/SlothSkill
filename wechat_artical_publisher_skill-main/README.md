@@ -2,7 +2,7 @@ English | [中文](README_zh-CN.md)
 
 # WeChat Article Publisher (微信公众号发布器)
 
-A powerful, standalone skill/tool to publish Markdown articles directly to WeChat Official Account drafts via the official WeChat API.
+A powerful, standalone skill/tool to send Markdown articles to WeChat Official Account drafts or directly publish them via the official WeChat API.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -12,6 +12,7 @@ A powerful, standalone skill/tool to publish Markdown articles directly to WeCha
 - **Auto Image Upload**: Automatically finds local images in Markdown, uploads them to WeChat's servers (`mmbiz.qpic.cn`), and replaces links.
 - **Smart Formatting**: Built-in integration with `bm.md` API for professional styling (Green Simple theme).
 - **Mobile Optimized**: Automatically fixes WeChat mobile rendering bugs (e.g., list styling, image captions).
+- **Draft / Publish / History**: Supports draft creation, direct publish submission, publish status polling, and published-history queries.
 - **Standalone**: All-in-one package. No external dependencies.
 
 ## 📋 Prerequisites
@@ -36,6 +37,9 @@ cp .env.example .env
 # Edit .env with your credentials
 # WECHAT_APPID=wxXXXXXXXXXXXXXXXX
 # WECHAT_APPSECRET=your_appsecret_here
+# WECHAT_AUTHOR=Your Name
+# WECHAT_NEED_OPEN_COMMENT=1
+# WECHAT_ONLY_FANS_CAN_COMMENT=0
 ```
 
 ### 2. Publish Your First Article
@@ -43,9 +47,11 @@ cp .env.example .env
 ```bash
 cd scripts
 python wechat_direct_api.py publish --markdown "/path/to/your/article.md"
+python wechat_direct_api.py publish --mode draft --markdown "/path/to/your/article.md"
+python wechat_direct_api.py publish --mode publish --markdown "/path/to/your/article.md"
 ```
 
-That's it! Your article will appear in your WeChat Official Account draft box.
+Without `--mode`, the tool will ask whether to send to drafts or directly publish. In non-interactive environments it defaults to `draft`.
 
 ## 📂 Directory Structure
 
@@ -66,9 +72,34 @@ wechat-article-publisher/
 
 | Command | Description |
 |---------|-------------|
-| `python wechat_direct_api.py publish --markdown <file>` | Publish a Markdown file to drafts |
+| `python wechat_direct_api.py publish --markdown <file>` | Ask whether to send to drafts or directly publish |
+| `python wechat_direct_api.py publish --mode draft --markdown <file>` | Publish a Markdown file to drafts |
+| `python wechat_direct_api.py publish --mode publish --markdown <file>` | Create draft, submit for publishing, and poll status |
 | `python wechat_direct_api.py test-token` | Verify API credentials and IP whitelist |
 | `python wechat_direct_api.py upload-image <file>` | Upload a single image to WeChat |
+| `python wechat_direct_api.py history --offset 0 --count 20` | Query published article history |
+
+## 🧾 Article Metadata
+
+You can configure article defaults in `.env`, or override them in Markdown frontmatter:
+
+```yaml
+---
+author: Zhang San
+need_open_comment: 1
+only_fans_can_comment: 0
+---
+```
+
+Priority order:
+- CLI arguments
+- Markdown frontmatter
+- `.env` defaults
+
+Suggested defaults:
+- `need_open_comment=1` for most opinion, tutorial, and content-heavy posts
+- `need_open_comment=0` for notices, rule pages, and low-interaction announcements
+- `only_fans_can_comment=0` unless you explicitly want fan-only discussion
 
 ## 🐛 Troubleshooting
 
@@ -80,7 +111,7 @@ wechat-article-publisher/
 
 ## 🤖 Use as an Agent Skill
 
-This package includes a `SKILL.md` file, making it compatible with AI agents like Claude Code. Simply place the folder in your agent's skill directory and instruct the agent to "publish to WeChat".
+This package includes a `SKILL.md` file, making it compatible with AI agents like Claude Code. The recommended agent behavior is to ask first whether the user wants to send to drafts, directly publish, or view published history.
 
 ## 📄 License
 

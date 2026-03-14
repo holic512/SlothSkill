@@ -3,8 +3,8 @@
 这是一个用于沉淀和管理实用技能模块的仓库，目前主要包含两个能力方向：
 
 - `report-orchestrator`：自动编排实验报告、课程设计报告、数据库设计报告等 Markdown 文档生成流程，并在条件满足时完成 PlantUML 渲染、图片回填和 Word 导出。
-- `wechat_artical_publisher_skill-main`：用于将 Markdown 文章发布到微信公众号草稿箱，支持图片上传、样式渲染和微信官方接口发布流程。
-- `wechat-content-workshop`：面向微信生态的内容工坊，负责围绕主题生成公众号图文内容包、归档素材、接入免费图像源并与发布器衔接。
+- `wechat_artical_publisher_skill-main`：用于将 Markdown 文章发送到微信公众号草稿箱或直接发布，支持图片上传、样式渲染、发布状态查询与已发布记录查询。
+- `wechat-content-workshop`：面向微信生态的内容工坊，负责围绕主题生成公众号图文内容包、归档素材、接入 Pollinations 生图与文字保底图，并与发布器衔接。
 
 ## 目录说明
 
@@ -21,14 +21,15 @@
 
 ### 2. wechat_artical_publisher_skill-main
 
-`wechat_artical_publisher_skill-main` 侧重于微信公众号文章发布，适合把本地 Markdown 内容整理后直接推送到微信公众号草稿箱。
+`wechat_artical_publisher_skill-main` 侧重于微信公众号文章发布，适合把本地 Markdown 内容整理后发送到草稿箱，或在确认后直接提交发布。
 
 主要功能包括：
 
-- 使用微信公众号官方 API 发布草稿
+- 使用微信公众号官方 API 创建草稿并支持直接发布
 - 自动上传 Markdown 中引用的本地图片
 - 处理文章样式与基础排版
 - 优化移动端显示兼容性
+- 支持发布状态轮询与已发布历史查询
 
 ### 3. wechat-content-workshop
 
@@ -39,7 +40,7 @@
 - 根据主题生成标题、摘要、正文、封面文案、分享语、结尾引导语
 - 固化低 AI 味写作规则，强化场景、细节、观点与段落节奏
 - 以“单篇选题包”为单位归档文章、封面、配图、草稿、成稿和元数据
-- 接入免登录、免费、可扩展的多源图像能力
+- 接入 Pollinations Key 鉴权生图、额度提示与文字保底图
 - 导出兼容微信公众号发布器的最终 Markdown
 
 ## 来源与致谢

@@ -2,7 +2,7 @@
 
 # 微信公众号发布器
 
-一个强大的独立工具，可通过微信官方 API 将 Markdown 文章直接发布到微信公众号草稿箱。
+一个强大的独立工具，可通过微信官方 API 将 Markdown 文章发送到微信公众号草稿箱，或直接提交发布。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -12,6 +12,7 @@
 - **自动上传图片**：自动识别 Markdown 中的本地图片，上传到微信服务器 (`mmbiz.qpic.cn`) 并替换链接。
 - **精美排版**：内置 `bm.md` API 集成，支持"绿色简约"主题。
 - **移动端优化**：自动修复微信移动端列表渲染异常等 Bug。
+- **草稿 / 直接发布 / 历史查询**：支持创建草稿、提交发布、轮询发布状态、查询已发布记录。
 - **开箱即用**：纯 Python 实现，无外部依赖。
 
 ## 📋 前置条件
@@ -36,6 +37,9 @@ cp .env.example .env
 # 编辑 .env 填入你的凭证
 # WECHAT_APPID=wxXXXXXXXXXXXXXXXX
 # WECHAT_APPSECRET=你的appsecret
+# WECHAT_AUTHOR=你的作者名
+# WECHAT_NEED_OPEN_COMMENT=1
+# WECHAT_ONLY_FANS_CAN_COMMENT=0
 ```
 
 ### 2. 发布你的第一篇文章
@@ -43,9 +47,11 @@ cp .env.example .env
 ```bash
 cd scripts
 python wechat_direct_api.py publish --markdown "/path/to/your/article.md"
+python wechat_direct_api.py publish --mode draft --markdown "/path/to/your/article.md"
+python wechat_direct_api.py publish --mode publish --markdown "/path/to/your/article.md"
 ```
 
-完成！你的文章将出现在微信公众号的草稿箱中。
+如果不传 `--mode`，工具会先询问是发到草稿还是直接发布；在非交互环境中会默认使用 `draft`。
 
 ## 📂 目录结构
 
@@ -66,9 +72,34 @@ wechat-article-publisher/
 
 | 命令 | 说明 |
 |------|------|
-| `python wechat_direct_api.py publish --markdown <文件>` | 发布 Markdown 文件到草稿箱 |
+| `python wechat_direct_api.py publish --markdown <文件>` | 先询问：发送到草稿还是直接发布 |
+| `python wechat_direct_api.py publish --mode draft --markdown <文件>` | 发布 Markdown 文件到草稿箱 |
+| `python wechat_direct_api.py publish --mode publish --markdown <文件>` | 创建草稿后直接提交发布，并轮询状态 |
 | `python wechat_direct_api.py test-token` | 验证 API 凭证和 IP 白名单 |
 | `python wechat_direct_api.py upload-image <文件>` | 上传单张图片到微信素材库 |
+| `python wechat_direct_api.py history --offset 0 --count 20` | 查询已发布文章记录 |
+
+## 🧾 文章元数据
+
+你可以在 `.env` 中配置默认值，也可以在 Markdown 顶部 frontmatter 中覆盖：
+
+```yaml
+---
+author: 张三
+need_open_comment: 1
+only_fans_can_comment: 0
+---
+```
+
+优先级如下：
+- 命令行参数
+- Markdown frontmatter
+- `.env` 默认值
+
+建议默认值：
+- 大多数观点、教程、内容型文章：`need_open_comment=1`
+- 通知、规则说明、低互动内容：`need_open_comment=0`
+- `only_fans_can_comment` 默认建议为 `0`，除非你明确只想让粉丝参与评论
 
 ## 🐛 常见问题
 
@@ -80,7 +111,7 @@ wechat-article-publisher/
 
 ## 🤖 作为 Agent 技能使用
 
-本项目包含 `SKILL.md` 文件，可与 Claude Code 等 AI Agent 配合使用。只需将文件夹放入 Agent 的技能目录，然后告诉 Agent "发布到微信公众号" 即可。
+本项目包含 `SKILL.md` 文件，可与 Claude Code 等 AI Agent 配合使用。推荐的 Agent 行为是先询问用户：发送到草稿、直接发布，还是查看已发布历史。
 
 ## 📄 许可证
 

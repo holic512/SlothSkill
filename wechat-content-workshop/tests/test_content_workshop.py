@@ -1,9 +1,12 @@
 import importlib.util
+import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "content_workshop.py"
@@ -14,7 +17,14 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-class ContentWorkshopTests(unittest.TestCase):
+class ContentWorkshopCliTests(unittest.TestCase):
+    def setUp(self):
+        self._env_backup = os.environ.copy()
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._env_backup)
+
     def test_generate_package_creates_required_outputs(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
             result = MODULE.main(
@@ -52,6 +62,43 @@ class ContentWorkshopTests(unittest.TestCase):
             self.assertEqual(package_json["channel"], "公众号")
             self.assertIn("share_text", package_json)
             self.assertGreaterEqual(len(package_json["assets"]), 1)
+            self.assertIn("generation_strategy", package_json["assets"][0])
+            self.assertIn("decision_reason", package_json["assets"][0])
+
+    def test_load_dotenv_from_current_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("POLLINATIONS_API_KEY=sk_from_current\n", encoding="utf-8")
+            os.environ.pop("POLLINATIONS_API_KEY", None)
+
+            loaded = MODULE.load_dotenv(start_dir=Path(tmp_dir))
+
+            self.assertEqual(loaded.resolve(), env_path.resolve())
+            self.assertEqual(os.environ.get("POLLINATIONS_API_KEY"), "sk_from_current")
+
+    def test_load_dotenv_from_parent_directory(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            child = root / "nested" / "deeper"
+            child.mkdir(parents=True)
+            env_path = root / ".env"
+            env_path.write_text("POLLINATIONS_API_KEY=sk_from_parent\n", encoding="utf-8")
+            os.environ.pop("POLLINATIONS_API_KEY", None)
+
+            loaded = MODULE.load_dotenv(start_dir=child)
+
+            self.assertEqual(loaded.resolve(), env_path.resolve())
+            self.assertEqual(os.environ.get("POLLINATIONS_API_KEY"), "sk_from_parent")
+
+    def test_explicit_environment_variable_wins_over_dotenv(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            env_path = Path(tmp_dir) / ".env"
+            env_path.write_text("POLLINATIONS_API_KEY=sk_from_file\n", encoding="utf-8")
+            os.environ["POLLINATIONS_API_KEY"] = "sk_from_env"
+
+            MODULE.load_dotenv(start_dir=Path(tmp_dir))
+
+            self.assertEqual(os.environ.get("POLLINATIONS_API_KEY"), "sk_from_env")
 
     def test_export_markdown_rebuilds_final_file(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -85,43 +132,84 @@ class ContentWorkshopTests(unittest.TestCase):
             self.assertIn("# ", rebuilt)
             self.assertIn("摘要：", rebuilt)
 
-    def test_image_generation_failure_falls_back_without_blocking_package(self):
+    def test_generate_prints_quota_summary_and_strategy(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
-            original_sources = MODULE.IMAGE_SOURCES
+            with mock.patch.object(
+                MODULE,
+                "fetch_pollinations_quota",
+                return_value=MODULE.PollinationsQuotaStatus(
+                    ok=True,
+                    lines=[
+                        "Pollinations 额度状态:",
+                        "- Key 状态: 可用",
+                        "- 账户余额: 42.5",
+                    ],
+                    key_data={"valid": True},
+                    balance_data={"balance": 42.5},
+                ),
+            ):
+                buffer = io.StringIO()
+                with mock.patch("sys.stdout", buffer):
+                    result = MODULE.main(
+                        [
+                            "generate",
+                            "--topic",
+                            "为什么老街区总能留住人",
+                            "--content-root",
+                            tmp_dir,
+                            "--skip-images",
+                        ]
+                    )
 
-            def always_fail(asset, target, proxy_url=None):
-                raise RuntimeError("network unavailable")
+            self.assertEqual(result, 0)
+            output = buffer.getvalue()
+            self.assertIn("Pollinations 额度状态:", output)
+            self.assertIn("账户余额: 42.5", output)
+            self.assertIn("图片策略决策: 额度可用", output)
 
-            MODULE.IMAGE_SOURCES = [always_fail]
+    def test_test_image_prints_generation_strategy(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            original_materialize = MODULE.materialize_images
+
+            def fake_materialize(package, images_dir, skip_images, quota_decision, sources=None):
+                target = Path(images_dir) / "01-cover.png"
+                target.write_bytes(b"fake")
+                return [
+                    {
+                        "role": "cover",
+                        "topic": package.topic,
+                        "prompt": "fake prompt",
+                        "local_path": str(target),
+                        "source": "pollinations[zimage]:direct",
+                        "width": 900,
+                        "height": 383,
+                        "status": "generated",
+                        "failure_reason": "",
+                        "generation_strategy": "remote-ai",
+                        "decision_reason": "allowed",
+                    }
+                ]
+
+            MODULE.materialize_images = fake_materialize
             try:
-                result = MODULE.main(
-                    [
-                        "generate",
-                        "--topic",
-                        "社区面包店为什么又热起来了",
-                        "--series",
-                        "街角小事",
-                        "--region",
-                        "苏州",
-                        "--content-root",
-                        tmp_dir,
-                    ]
-                )
+                buffer = io.StringIO()
+                with mock.patch("sys.stdout", buffer):
+                    result = MODULE.main(
+                        [
+                            "test-image",
+                            "--topic",
+                            "只测图片输出",
+                            "--output-dir",
+                            tmp_dir,
+                            "--image-count",
+                            "1",
+                        ]
+                    )
                 self.assertEqual(result, 0)
-                package_dir = (
-                    Path(tmp_dir)
-                    / "社区面包店为什么又热起来了"
-                    / "2026-03-14"
-                    / "街角小事"
-                    / "公众号"
-                )
-                package_json = json.loads((package_dir / "meta" / "package.json").read_text(encoding="utf-8"))
-                statuses = {asset["status"] for asset in package_json["assets"]}
-                self.assertEqual(statuses, {"generated"})
-                self.assertTrue(all(asset["source"] == "local-generated" for asset in package_json["assets"]))
-                self.assertTrue(all(Path(asset["local_path"]).exists() for asset in package_json["assets"]))
+                self.assertIn("generation_strategy=remote-ai", buffer.getvalue())
+                self.assertTrue((Path(tmp_dir) / "image_test_report.md").exists())
             finally:
-                MODULE.IMAGE_SOURCES = original_sources
+                MODULE.materialize_images = original_materialize
 
 
 if __name__ == "__main__":

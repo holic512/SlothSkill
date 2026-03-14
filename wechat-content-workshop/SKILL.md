@@ -20,8 +20,25 @@ description: Generate WeChat-ready content packages with archiving, image planni
 1. 默认主渠道是“公众号”
 2. 默认输出“单篇选题包”
 3. 写作要优先保留温度、口语感、细节和立场
-4. 即使图像源失败，也必须保住完整文案和配图建议
-5. 最终稿必须兼容仓库中的微信发布器
+4. 图片流程必须先获取额度，再判断是否允许远程 AI 生图
+5. 即使 AI 生图失败，也必须保住完整文案和配图建议
+6. 最终稿必须兼容仓库中的微信发布器
+7. 首次使用前先安装 `Pillow`，用于中文文字保底图渲染
+8. 如果要启用 Pollinations AI 生图，优先通过 `.env` 配置 `POLLINATIONS_API_KEY`
+
+## 依赖安装
+
+首次使用前请先执行：
+
+```bash
+python3 -m pip install --user --break-system-packages Pillow
+```
+
+如果在虚拟环境中运行，可以改为：
+
+```bash
+python3 -m pip install -r wechat-content-workshop/requirements.txt
+```
 
 ## 主要命令
 
@@ -29,6 +46,12 @@ description: Generate WeChat-ready content packages with archiving, image planni
 
 ```bash
 python3 wechat-content-workshop/scripts/content_workshop.py generate --topic "主题"
+```
+
+推荐先准备 `.env`：
+
+```bash
+cp wechat-content-workshop/.env.example .env
 ```
 
 ### 导出公众号成稿
@@ -42,6 +65,8 @@ python3 wechat-content-workshop/scripts/content_workshop.py export-markdown --pa
 ```bash
 python3 wechat-content-workshop/scripts/content_workshop.py publish-draft --package-dir "/path/to/package"
 ```
+
+这个命令会调用发布器的 `draft` 模式，避免在自动化流程里进入交互询问。
 
 ## 输出要求
 
@@ -62,6 +87,7 @@ python3 wechat-content-workshop/scripts/content_workshop.py publish-draft --pack
 - 类型
 - 渠道
 - 系列栏目
+- 图片来源、生成策略、决策原因、失败原因与额度查询摘要
 
 ## 内容风格
 

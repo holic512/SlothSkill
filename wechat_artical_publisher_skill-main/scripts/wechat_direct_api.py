@@ -6,6 +6,8 @@ WeChat Direct API Publisher - 微信公众号直连版发布工具
 - Access Token 获取与缓存
 - 图片上传至微信素材库
 - 草稿创建
+- 草稿提交发布
+- 发布状态查询
 
 要求：
 - IP必须在微信公众号后台白名单中
@@ -23,7 +25,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from uuid import uuid4
 
 
@@ -36,6 +38,152 @@ TOKEN_CACHE_FILE = ".token_cache.json"
 
 # 支持的图片格式
 SUPPORTED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp'}
+DEFAULT_PUBLISH_MODE = "draft"
+DEFAULT_POLL_INTERVAL = 5
+DEFAULT_POLL_TIMEOUT = 180
+
+
+def parse_yes_no(value: Any, default: Optional[int] = None) -> Optional[int]:
+    """将多种真假表示转换为 0/1。"""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return 1 if value else 0
+
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "y", "on", "open", "enabled"}:
+        return 1
+    if text in {"0", "false", "no", "n", "off", "close", "closed", "disabled"}:
+        return 0
+    return default
+
+
+def parse_frontmatter(raw_content: str) -> tuple[dict[str, Any], str]:
+    """
+    解析 Markdown 顶部简单 frontmatter。
+
+    仅支持 `key: value` 的轻量格式，足够覆盖作者和评论相关配置。
+    """
+    if not raw_content.startswith("---"):
+        return {}, raw_content
+
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", raw_content, flags=re.DOTALL)
+    if not match:
+        return {}, raw_content
+
+    metadata: dict[str, Any] = {}
+    for line in match.group(1).splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or ":" not in stripped:
+            continue
+        key, value = stripped.split(":", 1)
+        metadata[key.strip()] = value.strip().strip('"').strip("'")
+
+    body = raw_content[match.end():]
+    return metadata, body
+
+
+def get_env_default_article_settings() -> dict[str, Any]:
+    """从环境变量读取文章默认配置。"""
+    load_env_file()
+    return {
+        "author": os.environ.get("WECHAT_AUTHOR", "").strip(),
+        "need_open_comment": parse_yes_no(os.environ.get("WECHAT_NEED_OPEN_COMMENT"), 0),
+        "only_fans_can_comment": parse_yes_no(os.environ.get("WECHAT_ONLY_FANS_CAN_COMMENT"), 0),
+    }
+
+
+def infer_article_settings(article: dict[str, Any]) -> dict[str, int]:
+    """
+    在没有显式配置时给出保守但实用的默认值。
+
+    默认：
+    - 大多数内容型文章可打开评论
+    - 粉丝限定评论默认关闭，避免过度限制互动
+    """
+    metadata = article.get("metadata", {})
+    content = article.get("content", "")
+    title = article.get("title", "")
+    env_defaults = get_env_default_article_settings()
+
+    need_open_comment = parse_yes_no(metadata.get("need_open_comment"))
+    if need_open_comment is None:
+        need_open_comment = parse_yes_no(metadata.get("open_comment"))
+    if need_open_comment is None:
+        need_open_comment = env_defaults["need_open_comment"]
+    if need_open_comment is None:
+        lower_text = f"{title}\n{content}".lower()
+        should_open = not any(
+            keyword in lower_text
+            for keyword in ("公告", "通知", "活动规则", "免责声明", "征稿", "报名须知")
+        )
+        need_open_comment = 1 if should_open else 0
+
+    only_fans_can_comment = parse_yes_no(metadata.get("only_fans_can_comment"))
+    if only_fans_can_comment is None:
+        only_fans_can_comment = parse_yes_no(metadata.get("fans_only_comment"))
+    if only_fans_can_comment is None:
+        only_fans_can_comment = env_defaults["only_fans_can_comment"]
+    if only_fans_can_comment is None:
+        only_fans_can_comment = 0
+
+    return {
+        "need_open_comment": need_open_comment,
+        "only_fans_can_comment": only_fans_can_comment,
+    }
+
+
+def resolve_author(article: dict[str, Any], cli_author: str = "") -> str:
+    """按 CLI > frontmatter > 环境变量 的优先级解析作者。"""
+    if cli_author.strip():
+        return cli_author.strip()
+
+    metadata = article.get("metadata", {})
+    for key in ("author", "作者", "author_name"):
+        value = metadata.get(key)
+        if value and str(value).strip():
+            return str(value).strip()
+
+    return get_env_default_article_settings()["author"]
+
+
+def call_wechat_api(
+    endpoint: str,
+    access_token: str,
+    payload: Optional[dict[str, Any]] = None,
+    *,
+    method: str = "POST",
+    timeout: int = 120,
+) -> dict[str, Any]:
+    """统一处理微信 JSON API 调用。"""
+    url = f"{API_BASE_URL}{endpoint}?access_token={access_token}"
+    body = None
+    headers = {}
+    if payload is not None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    request = urllib.request.Request(url, data=body, headers=headers, method=method)
+
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8") if e.fp else ""
+        print(f"Error: HTTP {e.code} - {error_body}", file=sys.stderr)
+        sys.exit(1)
+    except urllib.error.URLError as e:
+        print(f"Error: 网络错误 - {e.reason}", file=sys.stderr)
+        sys.exit(1)
+
+    if "errcode" in data and data["errcode"] != 0:
+        print("Error: 微信接口调用失败", file=sys.stderr)
+        print(f"  接口: {endpoint}", file=sys.stderr)
+        print(f"  错误码: {data.get('errcode')}", file=sys.stderr)
+        print(f"  错误信息: {data.get('errmsg')}", file=sys.stderr)
+        sys.exit(1)
+
+    return data
 
 
 # ============================================================================
@@ -500,8 +648,9 @@ def parse_markdown_file(file_path: str) -> dict:
         sys.exit(1)
     
     with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    
+        raw_content = f.read()
+
+    metadata, content = parse_frontmatter(raw_content)
     lines = content.strip().split("\n")
     
     # 提取标题 (第一个 H1)
@@ -540,7 +689,8 @@ def parse_markdown_file(file_path: str) -> dict:
         "content": markdown_content,
         "summary": summary,
         "cover_image": cover_image,
-        "source_path": path
+        "source_path": path,
+        "metadata": metadata,
     }
 
 
@@ -788,6 +938,8 @@ def create_draft(
     thumb_media_id: Optional[str] = None,
     author: str = "",
     digest: str = "",
+    need_open_comment: int = 0,
+    only_fans_can_comment: int = 0,
 ) -> dict:
     """
     创建微信草稿。
@@ -801,6 +953,8 @@ def create_draft(
         thumb_media_id: 封面图片 media_id（可选）
         author: 作者
         digest: 摘要
+        need_open_comment: 是否打开评论
+        only_fans_can_comment: 是否仅粉丝可评论
         
     Returns:
         API 响应数据
@@ -811,8 +965,8 @@ def create_draft(
         "title": title,
         "content": content,
         "content_source_url": "",
-        "need_open_comment": 0,
-        "only_fans_can_comment": 0,
+        "need_open_comment": need_open_comment,
+        "only_fans_can_comment": only_fans_can_comment,
     }
     
     if author:
@@ -823,34 +977,100 @@ def create_draft(
         article["thumb_media_id"] = thumb_media_id
     
     payload = {"articles": [article]}
-    
-    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-    
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
-        method="POST"
+    return call_wechat_api("/cgi-bin/draft/add", access_token, payload)
+
+
+def submit_freepublish(media_id: str, access_token: str) -> dict:
+    """提交草稿进入发布流程。"""
+    return call_wechat_api(
+        "/cgi-bin/freepublish/submit",
+        access_token,
+        {"media_id": media_id},
     )
-    
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            data = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8") if e.fp else ""
-        print(f"Error: HTTP {e.code} - {error_body}", file=sys.stderr)
-        sys.exit(1)
-    except urllib.error.URLError as e:
-        print(f"Error: 网络错误 - {e.reason}", file=sys.stderr)
-        sys.exit(1)
-    
-    if "errcode" in data and data["errcode"] != 0:
-        print(f"Error: 创建草稿失败", file=sys.stderr)
-        print(f"  错误码: {data.get('errcode')}", file=sys.stderr)
-        print(f"  错误信息: {data.get('errmsg')}", file=sys.stderr)
-        sys.exit(1)
-    
-    return data
+
+
+def get_freepublish_status(publish_id: str, access_token: str) -> dict:
+    """查询单个发布任务状态。"""
+    return call_wechat_api(
+        "/cgi-bin/freepublish/get",
+        access_token,
+        {"publish_id": publish_id},
+    )
+
+
+def batch_get_freepublish(access_token: str, offset: int = 0, count: int = 20) -> dict:
+    """获取已发布文章列表。"""
+    return call_wechat_api(
+        "/cgi-bin/freepublish/batchget",
+        access_token,
+        {"offset": offset, "count": count, "no_content": 0},
+    )
+
+
+def format_publish_status(status_data: dict[str, Any]) -> str:
+    """将发布状态整理为适合终端阅读的文本。"""
+    publish_status = status_data.get("publish_status")
+    status_desc = {
+        0: "成功",
+        1: "发布中",
+        2: "原创失败",
+        3: "常规失败",
+        4: "平台审核中",
+        5: "平台审核拒绝",
+        6: "已撤回",
+    }.get(publish_status, f"未知状态({publish_status})")
+
+    parts = [f"发布状态: {status_desc}"]
+    for key in ("publish_id", "article_id", "article_detail", "fail_idx", "errmsg"):
+        value = status_data.get(key)
+        if value not in (None, "", []):
+            serialized = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            parts.append(f"{key}: {serialized}")
+    return "\n".join(parts)
+
+
+def wait_for_publish_result(
+    publish_id: str,
+    access_token: str,
+    interval: int = DEFAULT_POLL_INTERVAL,
+    timeout: int = DEFAULT_POLL_TIMEOUT,
+) -> dict:
+    """轮询发布任务直到成功、失败或超时。"""
+    deadline = time.time() + timeout
+    latest = {}
+
+    while time.time() < deadline:
+        latest = get_freepublish_status(publish_id, access_token)
+        publish_status = latest.get("publish_status")
+        print(format_publish_status(latest))
+
+        if publish_status in {0, 2, 3, 5, 6}:
+            return latest
+
+        print(f"等待 {interval} 秒后继续查询...")
+        time.sleep(interval)
+
+    print("Warning: 发布状态轮询超时，请稍后手动查询。", file=sys.stderr)
+    return latest
+
+
+def prompt_publish_mode() -> str:
+    """交互式选择发送到草稿还是直接发布。"""
+    if not sys.stdin.isatty():
+        print(f"ℹ 非交互环境，默认使用 {DEFAULT_PUBLISH_MODE} 模式")
+        return DEFAULT_PUBLISH_MODE
+
+    print("请选择发布方式：")
+    print("  1. 发送到草稿")
+    print("  2. 直接发布")
+
+    while True:
+        choice = input("输入 1 或 2: ").strip()
+        if choice == "1":
+            return "draft"
+        if choice == "2":
+            return "publish"
+        print("输入无效，请重新输入。")
 
 
 # ============================================================================
@@ -881,10 +1101,14 @@ def cmd_upload_image(args):
 
 
 def cmd_publish(args):
-    """发布文章到草稿箱"""
+    """发布文章到草稿箱或直接提交发布"""
     print("=" * 50)
-    print("发布文章到微信草稿箱")
+    print("发布文章到微信公众号")
     print("=" * 50)
+
+    mode = args.mode
+    if mode == "ask":
+        mode = prompt_publish_mode()
     
     # 获取 token
     token = get_access_token()
@@ -895,6 +1119,24 @@ def cmd_publish(args):
     
     print(f"  标题: {article['title']}")
     print(f"  摘要: {article['summary'][:50]}..." if article['summary'] else "  摘要: (无)")
+
+    author = resolve_author(article, args.author or "")
+    inferred_settings = infer_article_settings(article)
+    need_open_comment = (
+        parse_yes_no(args.need_open_comment)
+        if args.need_open_comment is not None
+        else inferred_settings["need_open_comment"]
+    )
+    only_fans_can_comment = (
+        parse_yes_no(args.only_fans_can_comment)
+        if args.only_fans_can_comment is not None
+        else inferred_settings["only_fans_can_comment"]
+    )
+
+    print(f"  作者: {author or '(未设置)'}")
+    print(f"  打开评论: {'是' if need_open_comment else '否'}")
+    print(f"  仅粉丝评论: {'是' if only_fans_can_comment else '否'}")
+    print(f"  发布模式: {'直接发布' if mode == 'publish' else '发送到草稿'}")
     
     # 处理图片
     processed_content = process_markdown_images(
@@ -929,15 +1171,83 @@ def cmd_publish(args):
         content=html_content,
         access_token=token,
         thumb_media_id=thumb_media_id,
-        digest=article['summary'] or ""
+        author=author,
+        digest=article['summary'] or "",
+        need_open_comment=need_open_comment,
+        only_fans_can_comment=only_fans_can_comment,
     )
-    
+
+    media_id = result.get("media_id", "")
     print("\n" + "=" * 50)
-    print("✓ 发布成功！")
+    print("✓ 草稿创建成功！")
     print("=" * 50)
-    print(f"  Media ID: {result.get('media_id', 'N/A')}")
-    print("\n请登录微信公众平台查看草稿箱。")
-    
+    print(f"  Media ID: {media_id or 'N/A'}")
+
+    if mode == "draft":
+        print("\n请登录微信公众平台查看草稿箱。")
+        return result
+
+    if not media_id:
+        print("Error: 草稿已创建，但未返回 media_id，无法继续发布。", file=sys.stderr)
+        sys.exit(1)
+
+    print("\n正在提交发布任务...")
+    publish_result = submit_freepublish(media_id, token)
+    publish_id = publish_result.get("publish_id")
+    print(f"  Publish ID: {publish_id or 'N/A'}")
+
+    if not publish_id:
+        print("Warning: 提交发布成功，但未返回 publish_id，请稍后在后台确认。", file=sys.stderr)
+        return publish_result
+
+    print("\n开始轮询发布状态...")
+    final_status = wait_for_publish_result(
+        publish_id,
+        token,
+        interval=args.poll_interval,
+        timeout=args.poll_timeout,
+    )
+
+    print("\n" + "=" * 50)
+    print("发布状态汇总")
+    print("=" * 50)
+    print(format_publish_status(final_status))
+    return {
+        "draft": result,
+        "submit": publish_result,
+        "status": final_status,
+    }
+
+
+def cmd_history(args):
+    """查询已发布文章列表。"""
+    print("=" * 50)
+    print("查询公众号已发布文章")
+    print("=" * 50)
+
+    token = get_access_token()
+    result = batch_get_freepublish(token, offset=args.offset, count=args.count)
+
+    items = result.get("item", [])
+    total_count = result.get("total_count", len(items))
+    print(f"总数: {total_count}")
+    print(f"当前返回: {len(items)}")
+
+    if not items:
+        print("暂无已发布记录。")
+        return result
+
+    for idx, item in enumerate(items, 1):
+        article = item.get("article", {}) if isinstance(item, dict) else {}
+        title = article.get("title") or item.get("title") or "Untitled"
+        article_id = item.get("article_id", "N/A")
+        update_time = item.get("update_time", "N/A")
+        print(f"\n[{idx}] {title}")
+        print(f"  article_id: {article_id}")
+        print(f"  update_time: {update_time}")
+        if article.get("link"):
+            print(f"  link: {article['link']}")
+
     return result
 
 
@@ -959,9 +1269,44 @@ def main():
     parser_upload.set_defaults(func=cmd_upload_image)
     
     # publish 命令
-    parser_publish = subparsers.add_parser("publish", help="发布文章到草稿箱")
+    parser_publish = subparsers.add_parser("publish", help="发布文章到草稿箱或直接发布")
     parser_publish.add_argument("--markdown", "-m", required=True, help="Markdown 文件路径")
+    parser_publish.add_argument(
+        "--mode",
+        choices=["ask", "draft", "publish"],
+        default="ask",
+        help="发布模式：询问、发送到草稿、直接发布",
+    )
+    parser_publish.add_argument("--author", default="", help="覆盖文章作者")
+    parser_publish.add_argument(
+        "--need-open-comment",
+        choices=["0", "1"],
+        help="是否打开评论：0 关闭，1 打开",
+    )
+    parser_publish.add_argument(
+        "--only-fans-can-comment",
+        choices=["0", "1"],
+        help="是否仅粉丝可评论：0 否，1 是",
+    )
+    parser_publish.add_argument(
+        "--poll-interval",
+        type=int,
+        default=DEFAULT_POLL_INTERVAL,
+        help="直接发布后轮询状态的间隔秒数",
+    )
+    parser_publish.add_argument(
+        "--poll-timeout",
+        type=int,
+        default=DEFAULT_POLL_TIMEOUT,
+        help="直接发布后轮询状态的超时秒数",
+    )
     parser_publish.set_defaults(func=cmd_publish)
+
+    # history 命令
+    parser_history = subparsers.add_parser("history", help="查询已发布文章列表")
+    parser_history.add_argument("--offset", type=int, default=0, help="分页起始偏移")
+    parser_history.add_argument("--count", type=int, default=20, help="返回条数")
+    parser_history.set_defaults(func=cmd_history)
     
     args = parser.parse_args()
     
