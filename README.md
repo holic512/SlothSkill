@@ -5,8 +5,9 @@
 - 微信公众号内容生成与发布
 - 实验/课程/数据库类报告自动编排
 
-同时新增了一个面向 Spring/JDBC/MySQL 开发协作的数据库探查技能：
+同时新增了两个项目级独立技能：
 
+- `frontend-visual-workshop`
 - `jdbc-schema-assistant`
 
 如果你现在的目标是“自动生成公众号文章并发布到微信公众号”，重点看这 3 个目录：
@@ -233,6 +234,90 @@ shared/
 - 只生成 / 只发布 / 生成+发布 三种安装方式
 
 ## 其他技能
+
+### `frontend-visual-workshop`
+
+用于在前端页面、文章页、落地页或产品介绍页已经基本成形后，按需补齐视觉资产。它是项目级独立 skill，不在 `wechat-content/` 工作流内，也不依赖 `wechat-content-workshop`、`wechat_artical_publisher_skill-main` 或 `shared`。
+
+适用场景：
+
+- 需要补 `logo`、`favicon`、`hero`、`feature`、`empty-state`、`cover`
+- 需要统一提示词结构，降低 AI 味，保留中文标题覆盖空间
+- 需要带远程生图失败回退和本地保底图能力
+- 想先生成计划和提示词，再决定是否实际生图
+
+目录位置：
+
+```text
+frontend-visual-workshop/
+├── SKILL.md
+├── .env.example
+├── scripts/
+└── tests/
+```
+
+#### `frontend-visual-workshop` 运行环境
+
+运行这个 skill 需要：
+
+- Python 3.10 及以上
+- 可访问 Pollinations 接口的网络环境
+- 可选代理：
+  - `POLLINATIONS_PROXY_ENABLED=1`
+  - `POLLINATIONS_PROXY_URL=http://127.0.0.1:7890`
+- 可选环境变量：
+  - `POLLINATIONS_API_KEY`
+  - `POLLINATIONS_API_BASE`
+  - `POLLINATIONS_ACCOUNT_API_BASE`
+  - `POLLINATIONS_IMAGE_MODEL`
+
+说明：
+
+- 不配置 `POLLINATIONS_API_KEY` 也能运行，但会直接回退为本地保底图
+- 当前脚本不依赖第三方 Python 包，标准库即可运行
+
+准备环境变量：
+
+```bash
+cp frontend-visual-workshop/.env.example frontend-visual-workshop/.env
+```
+
+只生成资产计划和提示词：
+
+```bash
+python3 frontend-visual-workshop/scripts/visual_workshop.py plan \
+  --topic "AI 简历助手" \
+  --brand "SlothSkill" \
+  --page-type "landing" \
+  --asset-types "logo,hero,feature"
+```
+
+实际生成图片：
+
+```bash
+python3 frontend-visual-workshop/scripts/visual_workshop.py generate \
+  --topic "AI 简历助手" \
+  --brand "SlothSkill" \
+  --page-type "landing" \
+  --asset-types "logo,hero,feature,empty-state,cover,favicon"
+```
+
+单独测试某类资产：
+
+```bash
+python3 frontend-visual-workshop/scripts/visual_workshop.py test-image \
+  --topic "AI 简历助手" \
+  --brand "SlothSkill" \
+  --page-type "landing" \
+  --asset-types "logo,cover"
+```
+
+输出内容：
+
+- `assets/`: 最终图片
+- `prompts/`: 每张图的最终提示词
+- `package.json`: 资产计划和元数据
+- `report.md`: 资产决策、提示词版本、来源、失败原因、回退说明
 
 ### `report-orchestrator`
 
