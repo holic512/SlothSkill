@@ -5,6 +5,10 @@
 - 微信公众号内容生成与发布
 - 实验/课程/数据库类报告自动编排
 
+同时新增了一个面向 Spring/JDBC/MySQL 开发协作的数据库探查技能：
+
+- `jdbc-schema-assistant`
+
 如果你现在的目标是“自动生成公众号文章并发布到微信公众号”，重点看这 3 个目录：
 
 - `wechat-content-workshop`
@@ -233,6 +237,75 @@ shared/
 ### `report-orchestrator`
 
 用于实验报告、课程设计报告、数据库设计报告等文档自动编排，适合从项目目录直接生成结构化 Markdown 报告，并在条件满足时补齐图表与导出结果。
+
+### `jdbc-schema-assistant`
+
+用于读取 Spring 配置或显式 JDBC MySQL 连接信息，自动探查数据库、表、字段、索引、外键与样例数据，并进一步生成 CRUD、分页查询、条件筛选和逻辑删除建议。
+
+适用场景：
+
+- Spring / Spring Boot 项目中需要从 `application.yml`、`application.yaml`、`application.properties` 读取数据源
+- 需要快速理解真实 MySQL 库表结构
+- 需要给 MyBatis / JPA / 手写 SQL 开发提供结构化 JSON 和 CRUD 规划
+
+### `jdbc-schema-assistant` 运行环境
+
+运行这个 skill 需要：
+
+- Python 3.10 及以上
+- 可访问的 MySQL 5.7+ 或 MySQL 8.x
+- Python 依赖：
+  - `PyMySQL`
+  - `PyYAML`
+
+安装依赖：
+
+```bash
+python3 -m pip install -r jdbc-schema-assistant/requirements.txt
+```
+
+如果你的 Python 环境启用了 PEP 668 限制，且你明确接受当前环境安装依赖，可以改用：
+
+```bash
+python3 -m pip install --user --break-system-packages -r jdbc-schema-assistant/requirements.txt
+```
+
+注意：
+
+- 这个 skill 第一版只支持 MySQL
+- 默认只读，不执行 `INSERT`、`UPDATE`、`DELETE`、`DDL`
+- 不要求创建虚拟环境，但需要当前 Python 环境里已安装依赖
+
+### `jdbc-schema-assistant` 使用方式
+
+1. 从 Spring 配置读取：
+
+```bash
+python3 jdbc-schema-assistant/scripts/db_inspector.py inspect-config --project-dir /path/to/project
+```
+
+2. 显式传 JDBC 信息：
+
+```bash
+python3 jdbc-schema-assistant/scripts/db_inspector.py inspect-url \
+  --url "jdbc:mysql://localhost:3306/a-20?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai" \
+  --username root \
+  --password 123456
+```
+
+3. 基于探查结果生成 CRUD 规划：
+
+```bash
+python3 jdbc-schema-assistant/scripts/crud_planner.py plan --input /path/to/schema.json
+```
+
+输出内容包括：
+
+- schema JSON
+- 表结构摘要
+- CRUD SQL 模板
+- 条件查询与排序建议
+- Java 字段类型与参数提示
 
 ## 来源与致谢
 
