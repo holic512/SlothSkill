@@ -38,7 +38,7 @@ def main() -> int:
         parts.append(markdown[cursor:match.start()])
         block = blocks[idx] if idx < len(blocks) else None
         if block and block.get("status") == "rendered" and block.get("image_path"):
-            alt = block.get("title") or f"PlantUML 图{idx + 1:03d}"
+            alt = block.get("title") or f"PlantUML Figure {idx + 1:03d}"
             replacement = f"![{alt}](images/{block['image_path']})"
         else:
             replacement = match.group(0)

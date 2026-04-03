@@ -319,9 +319,13 @@ python3 frontend-visual-workshop/scripts/visual_workshop.py test-image \
 - `package.json`: 资产计划和元数据
 - `report.md`: 资产决策、提示词版本、来源、失败原因、回退说明
 
-### `report-orchestrator`
+### `experiment-report-md`
 
-用于实验报告、课程设计报告、数据库设计报告等文档自动编排，适合从项目目录直接生成结构化 Markdown 报告，并在条件满足时补齐图表与导出结果。
+Used to generate English experiment-report Markdown from repository evidence. It is intended for coursework, lab, and project experiment reports that should stop at `report.source.md`.
+
+### `plantuml-professional-diagrams`
+
+Used to create professional PlantUML diagrams, especially sequence and interaction diagrams, render them into images, and rewrite Markdown to reference those rendered images.
 
 ### `jdbc-schema-assistant`
 

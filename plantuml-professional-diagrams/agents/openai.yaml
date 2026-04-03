@@ -1,0 +1,7 @@
+interface:
+  display_name: "PlantUML Professional Diagrams"
+  short_description: "Create professional PlantUML sequence and interaction diagrams and render them to images."
+  default_prompt: "Use $plantuml-professional-diagrams to create professional PlantUML diagrams for the current report, render the diagram blocks into images, and optionally rewrite the Markdown to reference those images."
+
+policy:
+  allow_implicit_invocation: true

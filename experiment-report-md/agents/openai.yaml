@@ -1,0 +1,7 @@
+interface:
+  display_name: "Experiment Report Markdown"
+  short_description: "Generate English experiment report Markdown from repository evidence."
+  default_prompt: "Use $experiment-report-md to analyze the current repository and draft an English experiment report as docx/<report-name>/report.source.md. If the report needs professional sequence or interaction diagrams, use $plantuml-professional-diagrams with the draft."
+
+policy:
+  allow_implicit_invocation: true

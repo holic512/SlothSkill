@@ -1,7 +1,0 @@
-interface:
-  display_name: "Report Orchestrator"
-  short_description: "自动扫描项目目录并编排实验报告生成"
-  default_prompt: "Use $report-orchestrator to generate a report from the current project, render PlantUML images, and export DOCX when pandoc is available."
-
-policy:
-  allow_implicit_invocation: true

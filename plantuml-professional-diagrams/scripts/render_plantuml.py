@@ -36,9 +36,9 @@ def extract_title(markdown: str, start: int, end: int, index: int) -> str:
             candidates.append(text)
             break
     for text in candidates:
-        if text.startswith("图"):
+        if text.lower().startswith("figure") or text.startswith("图"):
             return text
-    return f"PlantUML 图{index:03d}"
+    return f"PlantUML Figure {index:03d}"
 
 
 def collect_blocks(markdown: str) -> list[PlantUMLBlock]:
@@ -65,7 +65,7 @@ def resolve_dot_executable() -> str | None:
 def render_block(block: PlantUMLBlock, jar_path: Path, images_dir: Path, dot_path: str) -> dict:
     output_name = f"plantuml-{block.index:03d}.png"
     output_path = images_dir / output_name
-    with tempfile.TemporaryDirectory(prefix="report-orchestrator-plantuml-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="plantuml-professional-diagrams-") as tmp:
         tmpdir = Path(tmp)
         source_path = tmpdir / f"plantuml-{block.index:03d}.puml"
         source_path.write_text(block.code + "\n", encoding="utf-8")
@@ -130,7 +130,7 @@ def main() -> int:
     blocks = collect_blocks(markdown)
 
     if not status["java_available"]:
-        raise SystemExit("Java not found. Please install Java before running report-orchestrator.")
+        raise SystemExit("Java not found. Please install Java before running plantuml-professional-diagrams.")
     if not status["plantuml_jar_found"]:
         raise SystemExit(f"PlantUML jar not found: {jar_path}")
     if not status["graphviz_dot"]:
