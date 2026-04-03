@@ -1,0 +1,45 @@
+@startuml
+title Order Fulfillment With Compensation Path
+skinparam shadowing false
+<style>
+document {
+  BackgroundColor transparent
+}
+root {
+  FontName Helvetica
+  FontColor #1F2937
+}
+activityDiagram {
+  DiamondBackgroundColor #DBEAFE
+  DiamondBorderColor #2563EB
+  ArrowColor #2563EB
+  BarColor #64748B
+}
+activity {
+  BackgroundColor #F8FAFC
+  BorderColor #334155
+}
+</style>
+
+start
+:Receive paid order;
+:Reserve inventory;
+
+if (Inventory reserved?) then (yes)
+  :Create shipment;
+  :Request carrier pickup;
+  if (Pickup confirmed?) then (yes)
+    :Mark order as ready to dispatch;
+    stop
+  else (no)
+    :Cancel shipment request;
+    :Release inventory;
+    :Create compensation ticket;
+    stop
+  endif
+else (no)
+  :Create out-of-stock event;
+  :Trigger refund workflow;
+  stop
+endif
+@enduml

@@ -1,0 +1,69 @@
+@startuml
+title Checkout Request With Payment Fallback
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+skinparam sequenceMessageAlign center
+<style>
+document {
+  BackgroundColor transparent
+}
+root {
+  FontName Helvetica
+  FontColor #1F2937
+}
+sequenceDiagram {
+  ArrowColor #2563EB
+  ParticipantBorderColor #334155
+  ParticipantBackgroundColor #E2E8F0
+  ParticipantFontColor #0F172A
+  LifeLineBorderColor #94A3B8
+  LifeLineBackgroundColor #F8FAFC
+}
+note {
+  BackgroundColor #FFF7ED
+  BorderColor #FDBA74
+}
+</style>
+
+actor Customer
+participant "Web App" as App
+participant "API Gateway" as Gateway
+participant "Checkout Service" as Checkout
+participant "Payment Service" as Payment
+database "Orders DB" as Orders
+
+Customer -> App: Confirm order
+App -> Gateway: POST /checkout
+activate Gateway
+Gateway -> Checkout: createOrder(command)
+activate Checkout
+Checkout -> Payment: authorize(amount)
+activate Payment
+
+alt authorization approved
+  Payment --> Checkout: approved(transaction_id)
+  deactivate Payment
+  Checkout -> Orders: INSERT order
+  Orders --> Checkout: order_id
+  Checkout --> Gateway: 201 Created
+else primary provider timeout
+  Payment --> Checkout: timeout
+  deactivate Payment
+  Checkout -> Payment: retryWithFallbackProvider(amount)
+  activate Payment
+  Payment --> Checkout: approved(transaction_id)
+  deactivate Payment
+  Checkout -> Orders: INSERT order
+  Orders --> Checkout: order_id
+  Checkout --> Gateway: 201 Created
+else authorization rejected
+  Payment --> Checkout: rejected(reason)
+  deactivate Payment
+  Checkout --> Gateway: 402 Payment Required
+end
+
+Gateway --> App: HTTP response
+deactivate Checkout
+deactivate Gateway
+App --> Customer: Confirmation or error
+@enduml

@@ -1,0 +1,7 @@
+interface:
+  display_name: "PlantUML Professional Diagrams"
+  short_description: "Author professional PlantUML diagrams, choose the right diagram type, and render them to SVG or PNG."
+  default_prompt: "Use $plantuml-professional-diagrams to choose the right PlantUML diagram type for the current document, author a professional diagram, render Markdown blocks or .puml sources to SVG or PNG, and rewrite Markdown image references when needed."
+
+policy:
+  allow_implicit_invocation: true

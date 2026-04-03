@@ -1,0 +1,44 @@
+@startuml
+title Document Analysis With Async Worker
+!theme spacelab
+skinparam shadowing false
+skinparam responseMessageBelowArrow true
+
+actor Analyst
+participant "Console UI" as UI
+participant "API Service" as API
+queue "Job Queue" as Queue
+participant "Analysis Worker" as Worker
+database "Results Store" as Store
+
+Analyst -> UI: Upload document
+UI -> API: POST /analysis-jobs
+activate API
+API -> Queue: enqueue(job)
+API --> UI: 202 Accepted + job_id
+deactivate API
+
+loop until worker picks job
+  Queue -> Worker: deliver(job)
+end
+
+activate Worker
+Worker -> Store: markRunning(job_id)
+Worker -> Worker: parse and classify document
+
+alt analysis successful
+  Worker -> Store: saveResults(job_id, summary)
+  Worker --> Queue: ack
+else parsing failed
+  Worker -> Store: saveFailure(job_id, error)
+  Worker --> Queue: ack
+end
+deactivate Worker
+
+UI -> API: GET /analysis-jobs/{job_id}
+activate API
+API -> Store: fetchStatus(job_id)
+Store --> API: status + result
+API --> UI: 200 OK
+deactivate API
+@enduml

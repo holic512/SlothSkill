@@ -1,0 +1,42 @@
+@startuml
+title Platform Service Boundaries
+left to right direction
+!theme plain
+skinparam shadowing false
+
+rectangle "Client Channels" {
+  [Web App] as Web
+  [Admin Console] as Admin
+}
+
+package "Core Platform" {
+  [API Gateway] as Gateway
+  [Identity Service] as Identity
+  [Order Service] as Orders
+  [Billing Service] as Billing
+  [Notification Service] as Notify
+}
+
+cloud "External Providers" {
+  [Email Provider] as Email
+  [Payment Provider] as Payment
+}
+
+database "Operational Data" {
+  database "PostgreSQL" as Postgres
+  collections "Redis Cache" as Redis
+}
+
+Web --> Gateway
+Admin --> Gateway
+Gateway --> Identity
+Gateway --> Orders
+Gateway --> Billing
+Orders --> Postgres
+Billing --> Postgres
+Orders --> Redis
+Billing --> Payment
+Notify --> Email
+Orders ..> Notify : domain events
+Billing ..> Notify : payment updates
+@enduml

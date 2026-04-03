@@ -1,0 +1,59 @@
+@startuml
+title Edge To Core Deployment Topology
+top to bottom direction
+skinparam shadowing false
+skinparam wrapWidth 180
+<style>
+document {
+  BackgroundColor transparent
+}
+node {
+  BackgroundColor #F8FAFC
+  BorderColor #334155
+  FontColor #0F172A
+}
+database {
+  BackgroundColor #FEF3C7
+  BorderColor #D97706
+}
+cloud {
+  BackgroundColor #E0F2FE
+  BorderColor #0284C7
+}
+</style>
+
+cloud "Public Internet" {
+  node "CDN + WAF" as Edge
+}
+
+node "Production VPC" {
+  node "Ingress Subnet" {
+    node "API Gateway Pods" as Gateway
+  }
+
+  node "Application Subnet" {
+    node "Order Service Pods" as Orders
+    node "Worker Pods" as Workers
+  }
+
+  node "Data Subnet" {
+    database "PostgreSQL Primary" as Postgres
+    queue "RabbitMQ" as MQ
+    database "Redis" as Redis
+  }
+}
+
+cloud "Third-Party Providers" {
+  node "Payment API" as Payment
+  node "Email API" as Email
+}
+
+Edge --> Gateway
+Gateway --> Orders
+Orders --> MQ
+Workers --> MQ
+Orders --> Postgres
+Orders --> Redis
+Workers --> Payment
+Workers --> Email
+@enduml
